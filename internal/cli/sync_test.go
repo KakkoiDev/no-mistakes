@@ -953,6 +953,56 @@ func TestAxiSyncRecoverDivergedRefusesThenKeepLocalSucceeds(t *testing.T) {
 	}
 }
 
+// TestAxiSyncCheckSurfacesKeepLocalCustodyReturn pins the agent-facing
+// rendering of the keep-local release path: a follow-up commit the gate never
+// received can never make the default custody return provable, so the check
+// must name the command that does apply instead of manual reconciliation, and
+// keep offering the rerun alternative.
+func TestAxiSyncCheckSurfacesKeepLocalCustodyReturn(t *testing.T) {
+	f := newCLIRecoverFixture(t)
+	if err := os.WriteFile(filepath.Join(f.local, "followup.txt"), []byte("followup\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cliGit(t, f.local, "add", "followup.txt")
+	cliGit(t, f.local, "commit", "-m", "operator follow-up")
+	head := cliGit(t, f.local, "rev-parse", "HEAD")
+
+	out, err := executeCmd("axi", "sync", "--check")
+	var ee *exitError
+	if err == nil || !asExitError(err, &ee) || ee.code != 1 {
+		t.Fatalf("held branch check should exit 1, got %#v\n%s", err, out)
+	}
+	for _, want := range []string{
+		"state: pipeline_owned",
+		"safety: blocked_pipeline_owned_recoverable_keep_local",
+		"code: recover_custody_keep_local",
+		"command: no-mistakes axi sync --recover --keep-local",
+		"no-mistakes rerun",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("keep-local check missing %q:\n%s", want, out)
+		}
+	}
+	if got := cliGit(t, f.local, "rev-parse", "HEAD"); got != head {
+		t.Fatal("check moved HEAD")
+	}
+
+	// The advertised command is the one recovery accepts.
+	out, err = executeCmd("axi", "sync", "--recover", "--keep-local")
+	if err != nil {
+		t.Fatalf("advertised keep-local recover: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "recovered: true") || !strings.Contains(out, "state: custody_returned") {
+		t.Fatalf("keep-local recover output:\n%s", out)
+	}
+	if got := cliGit(t, f.local, "rev-parse", "HEAD"); got != head {
+		t.Fatal("keep-local recover moved the worktree")
+	}
+	if got := cliGit(t, f.gate, "rev-parse", "refs/heads/feature/recover"); got != head {
+		t.Fatalf("gate branch = %s, want kept head %s", got, head)
+	}
+}
+
 func TestSyncRecoverFlagValidation(t *testing.T) {
 	newCLIRecoverFixture(t)
 	for _, args := range [][]string{
