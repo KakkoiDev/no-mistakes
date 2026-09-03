@@ -46,6 +46,15 @@ var canonicalBranchSyncPhrases = []string{
 	"recover_custody",
 	"no-mistakes axi sync --recover",
 	"preserved in the local gate",
+	// The keep-local custody return is the only exit when the local head is
+	// outside the gate (v1.60.3 dogfood catch): a surface that names only
+	// `recover_custody` leaves that branch with no action an agent can run.
+	"recover_custody_keep_local",
+	"no-mistakes axi sync --recover --keep-local",
+	// Dirtiness alone blocks only the preserved-head return, and the branch
+	// stays held until the operator acts, so every surface must name the code
+	// and both exits rather than leaving the state unexplained.
+	"inspect_worktree",
 	// Cancellation releases a run that never changed the submitted head
 	// (v1.44.2 dogfood catch): every surface must name the released state and
 	// that it needs no recovery.

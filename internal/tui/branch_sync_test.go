@@ -161,6 +161,39 @@ func TestSyncConfirmationEscapeNeverApplies(t *testing.T) {
 	}
 }
 
+// TestKeepLocalCustodyReturnNamesTheCommandWithoutOfferingTheKey covers the
+// custody return the in-TUI recovery cannot perform: it always takes the
+// preserved head, which this state cannot prove safe, so the status names the
+// keep-local command and `u` stays inert rather than opening a confirmation
+// for a recovery that would refuse.
+func TestKeepLocalCustodyReturnNamesTheCommandWithoutOfferingTheKey(t *testing.T) {
+	run := &ipc.RunInfo{ID: "run-1", Branch: "feature", Status: types.RunFailed}
+	m := NewModel("socket", nil, run)
+	held := branchsync.State{
+		State: branchsync.StatePipelineOwned, Relation: branchsync.RelationDiverged, Safety: "blocked_pipeline_owned_recoverable_keep_local",
+		Local:      branchsync.LocalState{Branch: "feature", Head: strings.Repeat("a", 40), Clean: true},
+		Pipeline:   branchsync.PipelineState{RunID: "run-1", Status: "failed", Phase: "pre_push", CurrentHead: strings.Repeat("c", 40)},
+		NextAction: &branchsync.NextAction{Code: "recover_custody_keep_local", Command: "no-mistakes axi sync --recover --keep-local"},
+	}
+	m.branchSync = &held
+
+	view := stripANSI(renderLocalBranchStatus(m.branchSync, false, 80))
+	if !strings.Contains(view, "--recover --keep-local") {
+		t.Errorf("keep-local status missing the command:\n%s", view)
+	}
+	if strings.Contains(view, "u recover custody") {
+		t.Errorf("keep-local status offered the key for a recovery that would refuse:\n%s", view)
+	}
+
+	recoverCalls := 0
+	m.syncRecover = func() branchsync.State { recoverCalls++; return held }
+	nextModel, cmd := m.handleKey(keyMsg("u"))
+	m = nextModel.(Model)
+	if m.recoverConfirm || cmd != nil || recoverCalls != 0 {
+		t.Fatalf("u acted on a keep-local state: confirm=%v cmd=%v calls=%d", m.recoverConfirm, cmd != nil, recoverCalls)
+	}
+}
+
 // TestRecoverableCustodyActionFlowsThroughConfirmationAndRecoverService covers
 // the TUI half of the guarded custody recovery: a terminal pre-push
 // pipeline_owned state renders the recovery offer, `u` opens an explicit

@@ -23,6 +23,13 @@ func renderLocalBranchStatus(state *branchsync.State, refreshing bool, width int
 			if recoverableBranchSync(state) {
 				message = "Run ended without publishing its pipeline commits; they are preserved in the local gate. Recover custody to take the branch back, or rerun to resume validation."
 				footer = "u recover custody"
+			} else if keepLocalRecoverableBranchSync(state) {
+				// The in-TUI recovery takes the preserved head, which this
+				// state cannot prove safe; name the command that does apply
+				// rather than offering the key that would refuse.
+				message = "Run ended without publishing its pipeline commits, and your local head cannot be proven safe to replace with them. Run `no-mistakes sync --recover --keep-local` to return custody at your current head, or rerun to resume validation."
+			} else if dirtyBlockedBranchSync(state) {
+				message = "Run ended without publishing its pipeline commits, and the worktree is not clean. Commit or stash to recover custody here, or run `no-mistakes sync --recover --keep-local` to return custody at the current head."
 			} else {
 				message = "Local branch unchanged; the pipeline fix is not pushed yet. Do not make follow-up commits."
 			}
@@ -104,6 +111,19 @@ func boundedTUISyncValue(value string) string {
 // pipeline_owned custody state that the guarded recovery action can end.
 func recoverableBranchSync(state *branchsync.State) bool {
 	return state != nil && state.State == branchsync.StatePipelineOwned && state.Safety == "blocked_pipeline_owned_recoverable"
+}
+
+// keepLocalRecoverableBranchSync reports the terminal-run states whose only
+// custody return is the keep-local one, which the in-TUI recovery does not
+// perform.
+func keepLocalRecoverableBranchSync(state *branchsync.State) bool {
+	return state != nil && state.State == branchsync.StatePipelineOwned && state.Safety == "blocked_pipeline_owned_recoverable_keep_local"
+}
+
+// dirtyBlockedBranchSync reports the terminal-run state whose only obstacle to
+// taking the preserved head is the worktree itself.
+func dirtyBlockedBranchSync(state *branchsync.State) bool {
+	return state != nil && state.State == branchsync.StatePipelineOwned && state.Safety == "blocked_recover_dirty"
 }
 
 func renderRecoverConfirmation(state branchsync.State, width int) string {

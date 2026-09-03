@@ -277,6 +277,12 @@ func humanSyncSummary(state branchsync.State) string {
 		if state.Safety == "blocked_pipeline_owned_recoverable" {
 			return "run ended without publishing its pipeline commits; recover custody with `no-mistakes sync --recover` (or `no-mistakes rerun` to resume validation)"
 		}
+		if state.Safety == "blocked_pipeline_owned_recoverable_keep_local" {
+			return "run ended without publishing its pipeline commits and the local head cannot be proven safe to replace; return custody at the current head with `no-mistakes sync --recover --keep-local` (or `no-mistakes rerun` to resume validation)"
+		}
+		if state.Safety == "blocked_recover_dirty" {
+			return "run ended without publishing its pipeline commits and the worktree is not clean; commit or stash, then `no-mistakes sync --recover` (or `no-mistakes sync --recover --keep-local` to keep the current head)"
+		}
 		return "pipeline fix is not pushed yet; do not make local follow-up commits"
 	case branchsync.StateCustodyReturned:
 		return "custody returned; the branch is yours - start a fresh run when ready"
@@ -347,7 +353,7 @@ func runAxiSync(cmd *cobra.Command, check, recover, keepLocal bool) error {
 	if state.NextAction != nil {
 		help = append(help, "Run `"+state.NextAction.Command+"`")
 	}
-	if state.Safety == "blocked_pipeline_owned_recoverable" {
+	if state.Safety == "blocked_pipeline_owned_recoverable" || state.Safety == "blocked_pipeline_owned_recoverable_keep_local" {
 		help = append(help, "Run `no-mistakes rerun` instead to resume validating the preserved pipeline head")
 	}
 	if len(help) > 0 {
