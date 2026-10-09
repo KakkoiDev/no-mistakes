@@ -4,7 +4,6 @@ package github
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -253,7 +252,7 @@ func (h *Host) FindPR(ctx context.Context, branch, base string) (*scm.PR, error)
 			Login string `json:"login"`
 		} `json:"headRepositoryOwner"`
 	}
-	if err := json.Unmarshal(out, &prs); err != nil {
+	if err := unmarshalGHJSON(out, &prs); err != nil {
 		return nil, fmt.Errorf("parse gh pr list JSON: %w", err)
 	}
 	if prs == nil {
@@ -372,7 +371,7 @@ func (h *Host) GetPRContent(ctx context.Context, pr *scm.PR) (scm.PRContent, err
 		Title string `json:"title"`
 		Body  string `json:"body"`
 	}
-	if err := json.Unmarshal(out, &parsed); err != nil {
+	if err := unmarshalGHJSON(out, &parsed); err != nil {
 		return scm.PRContent{}, fmt.Errorf("parse gh pr view: %w", err)
 	}
 	return scm.PRContent{Title: parsed.Title, Body: parsed.Body}, nil
@@ -390,7 +389,7 @@ func (h *Host) GetPRState(ctx context.Context, pr *scm.PR) (scm.PRState, error) 
 	if err != nil {
 		return "", fmt.Errorf("gh pr view: %w", err)
 	}
-	return normalizePRState(strings.TrimSpace(string(out))), nil
+	return normalizePRState(lastLine(out)), nil
 }
 
 func (h *Host) GetPRBaseBranch(ctx context.Context, pr *scm.PR) (string, error) {
@@ -404,7 +403,7 @@ func (h *Host) GetPRBaseBranch(ctx context.Context, pr *scm.PR) (string, error) 
 	if err != nil {
 		return "", fmt.Errorf("gh pr view base branch: %w", err)
 	}
-	return strings.TrimSpace(string(out)), nil
+	return lastLine(out), nil
 }
 
 func (h *Host) GetChecks(ctx context.Context, pr *scm.PR) ([]scm.Check, error) {
@@ -466,7 +465,7 @@ func (h *Host) getPRChecks(ctx context.Context, selector string) ([]scm.Check, e
 		CompletedAt string `json:"completedAt"`
 		Link        string `json:"link"`
 	}
-	if err := json.Unmarshal(out, &raw); err != nil {
+	if err := unmarshalGHJSON(out, &raw); err != nil {
 		return nil, fmt.Errorf("parse CI checks: %w", err)
 	}
 	checks := make([]scm.Check, 0, len(raw))
@@ -542,7 +541,7 @@ func (h *Host) getCommitChecks(ctx context.Context, headSHA string) ([]scm.Check
 				} `json:"repository"`
 			} `json:"data"`
 		}
-		if err := json.Unmarshal(out, &response); err != nil {
+		if err := unmarshalGHJSON(out, &response); err != nil {
 			return nil, fmt.Errorf("parse checks for head commit: %w", err)
 		}
 		if response.Data.Repository == nil || response.Data.Repository.Object == nil {
@@ -719,7 +718,7 @@ func (h *Host) getPRHeadSHA(ctx context.Context, selector string) (string, error
 	if err != nil {
 		return "", fmt.Errorf("gh pr view head commit: %w", err)
 	}
-	headSHA := strings.TrimSpace(string(out))
+	headSHA := lastLine(out)
 	if headSHA == "" {
 		return "", errors.New("gh pr view returned an empty head commit")
 	}
@@ -761,7 +760,7 @@ func (h *Host) getWorkflowRunChecks(ctx context.Context, headSHA string) ([]scm.
 		TotalCount   *int          `json:"total_count"`
 		WorkflowRuns []workflowRun `json:"workflow_runs"`
 	}
-	if err := json.Unmarshal(out, &pages); err != nil {
+	if err := unmarshalGHJSON(out, &pages); err != nil {
 		return nil, fmt.Errorf("parse workflow runs for head commit: %w", err)
 	}
 	if len(pages) == 0 {
@@ -987,7 +986,7 @@ func (h *Host) fetchRunJobs(ctx context.Context, runID string) []githubRunJob {
 		return nil
 	}
 	var payload githubRunView
-	if err := json.Unmarshal(out, &payload); err != nil {
+	if err := unmarshalGHJSON(out, &payload); err != nil {
 		return nil
 	}
 	return payload.Jobs
@@ -1052,7 +1051,7 @@ func (h *Host) GetMergeableState(ctx context.Context, pr *scm.PR) (scm.Mergeable
 	if err != nil {
 		return "", fmt.Errorf("gh pr view mergeable: %w", err)
 	}
-	return normalizeMergeableState(strings.TrimSpace(string(out))), nil
+	return normalizeMergeableState(lastLine(out)), nil
 }
 
 func (h *Host) FetchFailedCheckLogs(ctx context.Context, _ *scm.PR, branch, headSHA string, failingNames []string) (string, error) {
@@ -1085,7 +1084,7 @@ func (h *Host) FetchFailedCheckLogs(ctx context.Context, _ *scm.PR, branch, head
 		return "", nil
 	}
 	var runs []githubRun
-	if err := json.Unmarshal(listOut, &runs); err != nil {
+	if err := unmarshalGHJSON(listOut, &runs); err != nil {
 		return "", nil
 	}
 	for _, run := range runs {
@@ -1151,7 +1150,7 @@ func runMatchesTargets(ctx context.Context, h *Host, run githubRun, targets map[
 		return false
 	}
 	var payload githubRunView
-	if err := json.Unmarshal(out, &payload); err != nil {
+	if err := unmarshalGHJSON(out, &payload); err != nil {
 		return false
 	}
 	for _, job := range payload.Jobs {
@@ -1307,7 +1306,7 @@ func (h *Host) GetReviewComments(ctx context.Context, pr *scm.PR) ([]scm.ReviewC
 				Message string `json:"message"`
 			} `json:"errors"`
 		}
-		if err := json.Unmarshal(out, &response); err != nil {
+		if err := unmarshalGHJSON(out, &response); err != nil {
 			return nil, fmt.Errorf("decode PR review comments JSON: %w", err)
 		}
 		if len(response.Errors) > 0 {
